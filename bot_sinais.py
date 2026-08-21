@@ -203,7 +203,7 @@ st.session_state.saldo_banca = saldo_banca
 
 timeframe_sel = st.sidebar.selectbox("⏱️ Timeframe do Gráfico:", options=["1m", "5m", "15m", "1h", "4h"], index=0)
 
-# MODO DE GESTÃO: PORCENTAGEM OU MÃO FIXA
+# MODO DE GESTÃO DE RISCO DE ENTRADA
 modo_gestao = st.sidebar.radio("📊 Modo de Entrada:", ["Porcentagem (%)", "Mão Fixa ($)"], index=0)
 
 if modo_gestao == "Porcentagem (%)":
@@ -213,7 +213,15 @@ else:
     valor_em_risco = st.sidebar.number_input("💵 Valor da Mão Fixa ($):", min_value=1.0, value=12.0, step=1.0)
     risco_por_operacao = (valor_em_risco / saldo_banca) * 100 if saldo_banca > 0 else 0
 
-retorno_alvo_desejado = st.sidebar.number_input("🎯 Meta de Ganho Alvo ($):", min_value=1.0, value=22.0, step=1.0)
+# MODO DA META DE GANHO (AUTOMÁTICO VIA IA OU MANUAL)
+st.sidebar.markdown("---")
+modo_alvo = st.sidebar.radio("🎯 Cálculo da Meta de Ganho (TP):", ["🤖 Automático via IA (Probabilidade/ATR)", "✏️ Valor Fixo Manual ($)"], index=0)
+
+if modo_alvo == "✏️ Valor Fixo Manual ($)":
+    retorno_alvo_desejado = st.sidebar.number_input("🎯 Meta de Ganho Alvo ($):", min_value=1.0, value=24.0, step=1.0)
+else:
+    rr_minimo = st.sidebar.slider("⚖️ Proporção R/R Mínima (IA):", min_value=1.0, max_value=4.0, value=1.5, step=0.1)
+    retorno_alvo_desejado = None
 
 max_drawdown_limite = st.sidebar.slider("🛑 Limite de Loss Diário (%):", min_value=1.0, max_value=10.0, value=3.0, step=0.5)
 min_confianca = st.sidebar.slider("🧠 Confiança Mínima IA (%):", min_value=50, max_value=90, value=confianca_def, step=5)
@@ -273,13 +281,22 @@ with col_c2:
     """, unsafe_allow_html=True)
 
 with col_c3:
-    st.markdown(f"""
-    <div class='dash-card'>
-        <h4>🎯 Retorno Alvo (TP)</h4>
-        <h2>+${retorno_alvo_desejado:,.2f}</h2>
-        <sub>Arrisca ${valor_em_risco:,.2f} p/ Ganhar ${retorno_alvo_desejado:,.2f}</sub>
-    </div>
-    """, unsafe_allow_html=True)
+    if modo_alvo == "🤖 Automático via IA (Probabilidade/ATR)":
+        st.markdown(f"""
+        <div class='dash-card'>
+            <h4>🎯 Retorno Alvo (TP)</h4>
+            <h2>🤖 Dinâmico (IA)</h2>
+            <sub>Alvo automático p/ Volatilidade & R/R min. 1:{rr_minimo:.1f}</sub>
+        </div>
+        """, unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div class='dash-card'>
+            <h4>🎯 Retorno Alvo (TP)</h4>
+            <h2>+${retorno_alvo_desejado:,.2f}</h2>
+            <sub>Arrisca ${valor_em_risco:,.2f} p/ Ganhar ${retorno_alvo_desejado:,.2f}</sub>
+        </div>
+        """, unsafe_allow_html=True)
 
 with col_c4:
     st.markdown(f"""
@@ -367,13 +384,25 @@ if st.button("🤖 PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_containe
             rsi = float((100 - (100 / (1 + rs))).iloc[-1])
             tendencia = "ALTA 🟢" if preco_atual > sma20 else "BAIXA 🔴"
 
-            ratio_alvo = retorno_alvo_desejado / max(valor_em_risco, 1.0)
+            if modo_alvo == "🤖 Automático via IA (Probabilidade/ATR)":
+                prompt_alvo = f"""
+                CALCULE AUTOMATICAMENTE O TAKE PROFIT (TP) IDEAL:
+                Analise a probabilidade técnica de acerto e o ATR ({atr_pips} pips). 
+                Exija uma relação Risco/Retorno mínima de 1:{rr_minimo}.
+                Defina TP_PIPS e SL_PIPS tecnicamente coerentes para maximizar o ganho baseado na probabilidade.
+                """
+            else:
+                ratio_alvo = retorno_alvo_desejado / max(valor_em_risco, 1.0)
+                prompt_alvo = f"""
+                Sua meta fixa de ganho é ${retorno_alvo_desejado:.2f} arriscando ${valor_em_risco:.2f} (Proporção R/R: {ratio_alvo:.2f}).
+                Calcule TP_PIPS e SL_PIPS para atingir exatamente essa meta.
+                """
 
             prompt = f"""
             Ativo: {nome_ativo} | Timeframe: {timeframe_sel} | Preço: {preco_atual:.5f} | SMA20: {sma20:.5f} | RSI: {rsi:.2f} | ATR: {atr_pips} pips | Tendência: {tendencia}
+            Valor de Risco por Operação: ${valor_em_risco:.2f}
 
-            Risco por Operação: ${valor_em_risco:.2f} | Meta de Lucro: ${retorno_alvo_desejado:.2f} (Proporção R/R: {ratio_alvo:.2f})
-            Calcule TP_PIPS e SL_PIPS respeitando essa proporção para atingir ${retorno_alvo_desejado:.2f} arriscando ${valor_em_risco:.2f}.
+            {prompt_alvo}
 
             Se CONFIANÇA < {min_confianca}%, marque OBRIGATORIAMENTE AGUARDAR.
 
@@ -381,8 +410,8 @@ if st.button("🤖 PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_containe
             DECISÃO: [COMPRA / VENDA / AGUARDAR]
             CONFIANÇA: [0 a 100]%
             CHANCE_TP: [0 a 100]%
-            TP_PIPS: [Número inteiro de pips para bater a meta de ganho]
-            SL_PIPS: [Número inteiro de pips de stop]
+            TP_PIPS: [Número inteiro de pips]
+            SL_PIPS: [Número inteiro de pips]
             JUSTIFICATIVA: [Texto curto em 1 frase]
             """
 
@@ -409,11 +438,15 @@ if st.button("🤖 PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_containe
                 chance_tp_val = int(chance_tp_match.group(1)) if chance_tp_match else 50
                 decisao_val = decisao_match.group(1).upper() if decisao_match else "AGUARDAR"
 
-                tp_calc = int(tp_dinamico_match.group(1)) if tp_dinamico_match else max(15, int(atr_pips * ratio_alvo))
+                tp_calc = int(tp_dinamico_match.group(1)) if tp_dinamico_match else max(15, atr_pips * 2)
                 sl_calc = int(sl_dinamico_match.group(1)) if sl_dinamico_match else max(10, atr_pips)
 
                 if confianca_val < min_confianca:
                     decisao_val = "AGUARDAR"
+
+                # CÁLCULO DE GANHO PROJETADO ($)
+                rr_calculado = tp_calc / max(sl_calc, 1)
+                ganho_projetado_usd = valor_em_risco * rr_calculado if modo_alvo == "🤖 Automático via IA (Probabilidade/ATR)" else retorno_alvo_desejado
 
                 lote_calculado = max(0.01, round(valor_em_risco / (max(sl_calc, 5) * 10), 2))
 
@@ -426,7 +459,7 @@ if st.button("🤖 PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_containe
                     "TP Pips": f"{tp_calc} pips",
                     "SL Pips": f"{sl_calc} pips",
                     "Risco ($)": f"${valor_em_risco:.2f}",
-                    "Alvo Ganho ($)": f"+${retorno_alvo_desejado:.2f}",
+                    "Alvo Ganho (IA)": f"+${ganho_projetado_usd:.2f} (R/R 1:{rr_calculado:.1f})",
                     "Status Filtro": f"✅ Aprovado" if confianca_val >= min_confianca and decisao_val != "AGUARDAR" else "⚠️ Bloqueado"
                 })
 
@@ -445,7 +478,7 @@ if st.button("🤖 PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_containe
                                 "Hora": datetime.datetime.now().strftime("%H:%M:%S"),
                                 "Ativo": simbolo_mt5, "Ação": acao, "Lote": lote_calculado,
                                 "TP Pips": tp_calc, "SL Pips": sl_calc,
-                                "Risco ($)": f"${valor_em_risco:.2f}", "Alvo ($)": f"+${retorno_alvo_desejado:.2f}",
+                                "Risco ($)": f"${valor_em_risco:.2f}", "Alvo ($)": f"+${ganho_projetado_usd:.2f}",
                                 "Confiança": f"{confianca_val}%"
                             })
 
