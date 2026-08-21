@@ -10,8 +10,8 @@ import re
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="Terminal IA Trader - Institutional Dashboard",
-    page_icon="⚡",
+    page_title="Terminal Ninja IA - Operational Dashboard",
+    page_icon="🥷",
     layout="wide"
 )
 
@@ -22,60 +22,62 @@ if "total_execucoes" not in st.session_state:
     st.session_state.total_execucoes = 0
 if "saldo_banca" not in st.session_state:
     st.session_state.saldo_banca = 1000.0
+if "notas_diario" not in st.session_state:
+    st.session_state.notas_diario = "📝 [Diário Ninja] Registre aqui observações de notícias, horários de payout e setups do dia..."
 
-# --- ESTILO VISUAL: DASHBOARD NAVY GLASS (INSPIRADO NA IMAGEM 2) ---
+# --- ESTILO VISUAL: DASHBOARD NINJA NAVY GLASS ---
 st.markdown("""
 <style>
-    /* Fundo Azul Marinho Profundo com Gradiente Geométrico */
+    /* Fundo Azul Marinho Profundo */
     .stApp, header[data-testid="stHeader"] { 
-        background: radial-gradient(circle at 80% 20%, #111a36 0%, #080c18 60%, #04060d 100%) !important; 
+        background: radial-gradient(circle at 80% 20%, #0b1120 0%, #050811 60%, #020307 100%) !important; 
         color: #e2e8f0 !important; 
         font-family: 'Inter', 'Segoe UI', sans-serif; 
     }
     
-    /* Barra Lateral Estilo Painel de Controle Dark Glass */
+    /* Barra Lateral */
     section[data-testid="stSidebar"] { 
-        background: rgba(10, 16, 35, 0.85) !important; 
-        border-right: 1px solid rgba(79, 110, 247, 0.25) !important;
+        background: rgba(8, 14, 28, 0.9) !important; 
+        border-right: 1px solid rgba(56, 189, 248, 0.2) !important;
         backdrop-filter: blur(15px);
-        box-shadow: 10px 0 30px rgba(0, 0, 0, 0.5);
+        box-shadow: 10px 0 30px rgba(0, 0, 0, 0.6);
     }
     
-    /* Rótulos e Textos da Sidebar */
+    /* Rótulos de Alta Visibilidade */
     section[data-testid="stSidebar"] label, 
     section[data-testid="stSidebar"] p, 
     section[data-testid="stSidebar"] span {
-        color: #94a3b8 !important;
-        font-weight: 600 !important;
+        color: #cbd5e1 !important;
+        font-weight: 700 !important;
         font-size: 13px !important;
         letter-spacing: 0.5px;
     }
     
-    /* Entradas e Seletores Estilo Neon/Glass */
-    .stTextInput input, .stNumberInput input, div[data-baseweb="select"] > div {
-        background-color: rgba(15, 23, 42, 0.8) !important;
+    /* Inputs estilo Neon */
+    .stTextInput input, .stNumberInput input, .stTextArea textarea, div[data-baseweb="select"] > div {
+        background-color: rgba(15, 23, 42, 0.85) !important;
         color: #38bdf8 !important;
-        border: 1px solid rgba(56, 189, 248, 0.3) !important;
+        border: 1px solid rgba(56, 189, 248, 0.35) !important;
         border-radius: 8px !important;
         font-weight: 700 !important;
     }
-    .stTextInput input:focus, .stNumberInput input:focus {
+    .stTextInput input:focus, .stNumberInput input:focus, .stTextArea textarea:focus {
         border-color: #818cf8 !important;
         box-shadow: 0 0 12px rgba(129, 140, 248, 0.4) !important;
     }
 
-    /* Cards Translúcidos no Estilo Dashboard Profissional */
+    /* Cards Translúcidos Institucionais */
     .dash-card {
-        background: rgba(16, 25, 53, 0.65);
-        border: 1px solid rgba(79, 110, 247, 0.25);
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(56, 189, 248, 0.25);
         border-radius: 14px;
         padding: 20px;
         backdrop-filter: blur(12px);
-        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
         transition: transform 0.2s ease, border-color 0.2s ease;
     }
     .dash-card:hover {
-        border-color: rgba(56, 189, 248, 0.5);
+        border-color: rgba(56, 189, 248, 0.6);
         transform: translateY(-2px);
     }
     .dash-card h4 {
@@ -101,34 +103,34 @@ st.markdown("""
 
     /* Botão Principal Neon Glow */
     .stButton>button {
-        background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%) !important;
+        background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%) !important;
         color: #ffffff !important;
         font-weight: 800 !important;
-        font-size: 15px !important;
+        font-size: 16px !important;
         border: none !important;
         border-radius: 10px !important;
         padding: 14px 28px !important;
-        box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4) !important;
+        box-shadow: 0 4px 20px rgba(124, 58, 237, 0.4) !important;
         transition: all 0.3s ease !important;
     }
     .stButton>button:hover {
-        box-shadow: 0 6px 30px rgba(59, 130, 246, 0.7) !important;
+        box-shadow: 0 6px 30px rgba(37, 99, 235, 0.8) !important;
         transform: scale(1.01);
     }
 
-    /* Badges de Sinalização */
+    /* Badges */
     .badge-buy { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid #22c55e; padding: 6px 14px; border-radius: 6px; font-weight: 800; }
     .badge-sell { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid #ef4444; padding: 6px 14px; border-radius: 6px; font-weight: 800; }
     .badge-wait { background: rgba(234, 179, 8, 0.2); color: #facc15; border: 1px solid #eab308; padding: 6px 14px; border-radius: 6px; font-weight: 800; }
 </style>
 """, unsafe_allow_html=True)
 
-# HEADER INSTITUCIONAL
+# HEADER INSTITUCIONAL NINJA
 st.markdown("""
 <div style='display: flex; justify-content: space-between; align-items: center; padding-bottom: 20px;'>
     <div>
-        <h1 style='margin:0; font-size: 28px; color: #f8fafc;'>⚡ INSTITUTIONAL IA TERMINAL PRO</h1>
-        <p style='margin:0; color: #64748b; font-size: 13px;'>Análise Algorítmica Multi-Ativos | Gestão Avançada de Risco Exness</p>
+        <h1 style='margin:0; font-size: 28px; color: #f8fafc;'>🥷 INSTITUTIONAL NINJA TERMINAL PRO</h1>
+        <p style='margin:0; color: #64748b; font-size: 13px;'>Varredura Algorítmica Multi-Ativos | Gestão de Risco Precisa Exness</p>
     </div>
 </div>
 """, unsafe_allow_html=True)
@@ -147,7 +149,7 @@ async def consultar_saldo_exness(token, account_id):
         return False, str(e)
 
 # --- SIDEBAR: CONEXÃO & PRESETS DE IA ---
-st.sidebar.markdown("### 🔑 CREDENCIAIS & SYNCRONIA")
+st.sidebar.markdown("### 🔑 CONEXÃO & SYNCRONIA")
 gemini_key = st.sidebar.text_input("Gemini API Key:", type="password")
 metaapi_token = st.sidebar.text_input("MetaApi Token:", type="password")
 metaapi_account_id = st.sidebar.text_input("MetaApi Account ID:", type="password")
@@ -171,7 +173,7 @@ st.sidebar.markdown("### 🎯 COMBOS RECOMENDADOS (IA)")
 
 # DICIONÁRIO DE COMBOS DE ESTRATÉGIA
 combos_estrategia = {
-    "🛡️ Conservador (Forex Low Risk)": {
+    "🥷 Conservador Ninja (Forex Low Risk)": {
         "risco": 0.5, "tp": 150, "sl": 100, "confianca": 70,
         "ativos": ["EURUSD (Euro / Dólar)", "GBPUSD (Libra / Dólar)", "USDJPY (Dólar / Iene)"]
     },
@@ -179,7 +181,7 @@ combos_estrategia = {
         "risco": 1.0, "tp": 250, "sl": 120, "confianca": 65,
         "ativos": ["XAUUSD (Ouro)", "XAGUSD (Prata)", "USOIL (Petróleo WTI)"]
     },
-    "🚀 Cripto & Tech (Alta Volatilidade)": {
+    "🚀 Cripto & Tech (Agressivo)": {
         "risco": 2.0, "tp": 400, "sl": 200, "confianca": 60,
         "ativos": ["BTCUSD (Bitcoin)", "ETHUSD (Ethereum)", "NVDA (NVIDIA)", "TSLA (Tesla)"]
     },
@@ -190,9 +192,8 @@ combos_estrategia = {
     "⚙️ Personalizado (Ajuste Manual)": None
 }
 
-combo_selecionado = st.sidebar.selectbox("Selecione um Perfil de Estratégia:", list(combos_estrategia.keys()))
+combo_selecionado = st.sidebar.selectbox("Perfil de Estratégia:", list(combos_estrategia.keys()))
 
-# AJUSTE DE PARÂMETROS BASEADO NO COMBO OU MANUAL
 if combo_selecionado != "⚙️ Personalizado (Ajuste Manual)":
     dados_combo = combos_estrategia[combo_selecionado]
     risco_def = dados_combo["risco"]
@@ -204,18 +205,20 @@ else:
     risco_def, tp_def, sl_def, confianca_def, ativos_def = 1.0, 200, 100, 60, []
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🛡️ CONTROLE DE GESTÃO E RISCO")
+st.sidebar.markdown("### 🛡️ CONTROLE DE RISCO & NINJA MANAGEMENT")
 saldo_banca = st.sidebar.number_input("💵 Saldo de Operação ($):", value=st.session_state.saldo_banca, step=100.0)
 st.session_state.saldo_banca = saldo_banca
 
+timeframe_sel = st.sidebar.selectbox("⏱️ Timeframe do Gráfico:", options=["5m", "15m", "1h", "4h"], index=1)
+
 risco_por_operacao = st.sidebar.slider("🎯 Risco por Operação (%):", min_value=0.2, max_value=5.0, value=risco_def, step=0.1)
-max_drawdown_limite = st.sidebar.slider("🛑 Limite de Drawdown Diário (%):", min_value=1.0, max_value=10.0, value=3.0, step=0.5)
+max_drawdown_limite = st.sidebar.slider("🛑 Limite de Loss Diário (%):", min_value=1.0, max_value=10.0, value=3.0, step=0.5)
 
 tp_pips = st.sidebar.number_input("🎯 Take Profit (Pips):", value=tp_def, step=10)
 sl_pips = st.sidebar.number_input("🛡️ Stop Loss (Pips):", value=sl_def, step=10)
-min_confianca = st.sidebar.slider("🧠 Confiança Mínima da IA (%):", min_value=50, max_value=90, value=confianca_def, step=5)
+min_confianca = st.sidebar.slider("🧠 Confiança Mínima IA (%):", min_value=50, max_value=90, value=confianca_def, step=5)
 
-auto_trading = st.sidebar.checkbox("⚡ Auto-Trading Ativo (Exness)", value=False)
+auto_trading = st.sidebar.checkbox("🥷 Auto-Trading Ativo (Exness)", value=False)
 
 # CÁLCULOS MATEMÁTICOS DE RISCO
 valor_em_risco = saldo_banca * (risco_por_operacao / 100)
@@ -236,13 +239,13 @@ ativos_master = {
 }
 
 st.sidebar.markdown("---")
-st.sidebar.markdown("### 🌐 ATIVOS EM ANÁLISE")
+st.sidebar.markdown("### 🌐 ATIVOS EM OBSERVAÇÃO")
 if combo_selecionado != "⚙️ Personalizado (Ajuste Manual)":
     if ativos_def == "TODOS":
         ativos_selecionados = list(ativos_master.keys())
     else:
         ativos_selecionados = ativos_def
-    st.sidebar.info(f"Combo selecionado ({len(ativos_selecionados)} ativos).")
+    st.sidebar.info(f"Ativos carregados ({len(ativos_selecionados)} no combo).")
 else:
     selecionar_todos = st.sidebar.checkbox("🔥 Selecionar Todos os Ativos")
     if selecionar_todos:
@@ -250,31 +253,31 @@ else:
     else:
         ativos_selecionados = st.sidebar.multiselect("Ativos:", options=list(ativos_master.keys()), default=["EURUSD (Euro / Dólar)", "XAUUSD (Ouro)"])
 
-# --- LAYOUT DASHBOARD (PAINEL DE CARDS IGUAL IMAGEM 2) ---
+# --- LAYOUT DASHBOARD (CARDS COM NOTAS E CIFRÕES) ---
 col_c1, col_c2, col_c3, col_c4 = st.columns(4)
 
 with col_c1:
     st.markdown(f"""
     <div class='dash-card'>
-        <h4>Banca Operacional</h4>
+        <h4>💵 Banca Operacional</h4>
         <h2>${saldo_banca:,.2f}</h2>
-        <sub>Exness Sync OK</sub>
+        <sub>Exness Sync Active</sub>
     </div>
     """, unsafe_allow_html=True)
 
 with col_c2:
     st.markdown(f"""
     <div class='dash-card'>
-        <h4>Risco Máximo / Ordem</h4>
+        <h4>💸 Risco / Entrada</h4>
         <h2>${valor_em_risco:,.2f}</h2>
-        <sub>{risco_por_operacao}% da Banca</sub>
+        <sub>{risco_por_operacao}% por Posição</sub>
     </div>
     """, unsafe_allow_html=True)
 
 with col_c3:
     st.markdown(f"""
     <div class='dash-card'>
-        <h4>Retorno Alvo (TP)</h4>
+        <h4>🎯 Retorno Alvo (TP)</h4>
         <h2>+${retorno_potencial:,.2f}</h2>
         <sub>Ratio 1 : {tp_pips/sl_pips:.1f}</sub>
     </div>
@@ -283,13 +286,21 @@ with col_c3:
 with col_c4:
     st.markdown(f"""
     <div class='dash-card'>
-        <h4>Limite Drawdown</h4>
+        <h4>🛡️ Trava de Loss Diário</h4>
         <h2>${max_drawdown_valor:,.2f}</h2>
-        <sub>Máx. Loss Diário ({max_drawdown_limite}%)</sub>
+        <sub>Máx. Loss ({max_drawdown_limite}%)</sub>
     </div>
     """, unsafe_allow_html=True)
 
 st.markdown("<br>", unsafe_allow_html=True)
+
+# BLOCO DE NOTAS & DIÁRIO DE TRADE NINJA
+with st.expander("📝 BLOCO DE NOTAS & DIÁRIO DE PLANO DE TRADE", expanded=False):
+    st.session_state.notas_diario = st.text_area(
+        "Anotações Estratégicas do Dia:",
+        value=st.session_state.notas_diario,
+        height=120
+    )
 
 # FUNÇÃO ASYNC EXECUÇÃO METAAPI
 async def executar_ordem_exness(token, account_id, symbol, action, volume, sl_pips, tp_pips):
@@ -312,12 +323,12 @@ async def executar_ordem_exness(token, account_id, symbol, action, volume, sl_pi
             res = await connection.create_market_buy_order(symbol=symbol, volume=volume, stop_loss=sl_price, take_profit=tp_price)
         else:
             res = await connection.create_market_sell_order(symbol=symbol, volume=volume, stop_loss=sl_price, take_profit=tp_price)
-        return True, f"Ordem {action} enviada com sucesso! Ticket: {res.get('numericCode', 'OK')}"
+        return True, f"Ordem {action} executada com sucesso! Ticket: {res.get('numericCode', 'OK')}"
     except Exception as e:
         return False, str(e)
 
-# BOTÃO DE AÇÃO
-if st.button("⚡ PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_container_width=True):
+# BOTÃO DE AÇÃO PRINCIPAL
+if st.button("🥷 PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_container_width=True):
     if not gemini_key:
         st.error("⚠️ Insira sua Chave API do Gemini na barra lateral.")
     elif not ativos_selecionados:
@@ -331,7 +342,7 @@ if st.button("⚡ PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_container
         for idx, nome_ativo in enumerate(ativos_selecionados):
             progresso.progress((idx + 1) / total)
             symbol_ticker = ativos_master.get(nome_ativo, "EURUSD=X")
-            df = yf.download(tickers=symbol_ticker, period="2d", interval="15m", progress=False)
+            df = yf.download(tickers=symbol_ticker, period="3d", interval=timeframe_sel, progress=False)
             
             if df.empty:
                 continue
@@ -343,10 +354,10 @@ if st.button("⚡ PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_container
             loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
             rs = gain / loss
             rsi = float((100 - (100 / (1 + rs))).iloc[-1])
-            tendencia = "ALTA" if preco_atual > sma20 else "BAIXA"
+            tendencia = "ALTA 🟢" if preco_atual > sma20 else "BAIXA 🔴"
 
             prompt = f"""
-            Ativo: {nome_ativo} | Preço: {preco_atual:.5f} | SMA20: {sma20:.5f} | RSI: {rsi:.2f} | Tendência: {tendencia}
+            Ativo: {nome_ativo} | Timeframe: {timeframe_sel} | Preço: {preco_atual:.5f} | SMA20: {sma20:.5f} | RSI: {rsi:.2f} | Tendência: {tendencia}
             Avalie se deve COMPRAR, VENDER ou AGUARDAR para atingir TP de {tp_pips} pips antes do SL de {sl_pips} pips.
             Se CONFIANÇA < {min_confianca}%, marque OBRIGATORIAMENTE AGUARDAR.
 
@@ -387,9 +398,9 @@ if st.button("⚡ PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_container
                     "Sinal IA": decisao_val,
                     "Confiança": f"{confianca_val}%",
                     "Probab. TP": f"{chance_tp_val}%",
-                    "Lote Sugerido": lote_calculado,
-                    "Alvo Estimado ($)": f"+${retorno_potencial:.2f}",
-                    "Status Filtro": f"✅ Aprovado (≥{min_confianca}%)" if confianca_val >= min_confianca and decisao_val != "AGUARDAR" else "⚠️ Bloqueado"
+                    "Lote Calc.": lote_calculado,
+                    "Alvo Estimado": f"+${retorno_potencial:.2f}",
+                    "Filtro Ninja": f"✅ Aprovado (≥{min_confianca}%)" if confianca_val >= min_confianca and decisao_val != "AGUARDAR" else "⚠️ Bloqueado"
                 })
 
                 # EXECUÇÃO AUTOMÁTICA
@@ -410,11 +421,11 @@ if st.button("⚡ PROCESSAR ANÁLISE QUANTITATIVA & VARREDURA IA", use_container
                                 "Confiança": f"{confianca_val}%"
                             })
 
-        # PAINEL DE RESULTADOS EM ESTILO DASHBOARD
+        # PAINEL DE RESULTADOS DA VARREDURA
         st.markdown("<br>", unsafe_allow_html=True)
         st.markdown("""
         <div class='dash-card'>
-            <h3 style='margin-top:0; color:#f8fafc;'>📊 OPORTUNIDADES DETECTADAS PELA IA</h3>
+            <h3 style='margin-top:0; color:#f8fafc;'>📊 OPORTUNIDADES NINJA ENCONTRADAS</h3>
         </div>
         """, unsafe_allow_html=True)
         
