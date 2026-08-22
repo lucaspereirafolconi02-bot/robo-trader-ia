@@ -1,6 +1,6 @@
-streamlit
+supabase
 google-generativeai
+yfinance
+python-dotenv
 pandas
 numpy
-yfinance
-metaapi-cloud-sdk
