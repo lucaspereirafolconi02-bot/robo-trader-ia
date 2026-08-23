@@ -48,7 +48,7 @@ st.markdown("""
 
     .status-pill { display: inline-flex; align-items: center; padding: 6px 14px; border-radius: 30px; font-size: 0.8rem; font-weight: 700; }
     .pill-active { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(52, 211, 153, 0.4); }
-    .pill-sync { background: rgba(56, 189, 248, 0.15); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.4); }
+    .pill-stopped { background: rgba(244, 63, 94, 0.15); color: #f43f5e; border: 1px solid rgba(244, 63, 94, 0.4); }
 
     section[data-testid="stSidebar"] { background-color: #060911 !important; border-right: 1px solid rgba(255, 255, 255, 0.07); }
 </style>
@@ -77,11 +77,15 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# --- CARREGAR SALDO REAL SINCRONIZADO DA EXNESS ---
+# --- ESTADOS PADRÃO DA SESSÃO ---
+if "bot_rodando" not in st.session_state:
+    st.session_state.bot_rodando = False
+
+# --- CARREGAR SALDO E CONFIGURAÇÕES DA CONTA ---
 saldo = 0.00
 equity = 0.00
 lucro = 0.00
-status_bot = "Aguardando Worker Local"
+status_bot = "PARADO"
 sync_status = "Aguardando MT5"
 
 if supabase:
@@ -92,73 +96,87 @@ if supabase:
             saldo = float(d.get("saldo", 0.00))
             equity = float(d.get("equity", saldo))
             lucro = float(d.get("lucro_flutuante", 0.00))
-            status_bot = d.get("status", "Ativo")
+            status_bot = d.get("status", "EXECUTANDO" if st.session_state.bot_rodando else "PARADO")
             sync_status = "Sincronizado"
     except Exception:
         pass
 
-# --- CATÁLOGO COMPLETO DE ATIVOS ---
-LISTA_ATIVOS = {
-    "Forex Majors": ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD"],
-    "Forex Minors": ["EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "EURAUD"],
-    "Commodities": ["XAUUSD (Ouro)", "XAGUSD (Prata)", "USOIL (Petróleo)"],
-    "Criptomoedas": ["BTCUSD (Bitcoin)", "ETHUSD (Ethereum)"],
-    "Índices Globais": ["US30 (Dow Jones)", "NAS100 (Nasdaq)", "GER30 (DAX)"]
-}
+# --- LISTA COMPLETA DE ATIVOS PARA VARREDURA ---
+TODOS_ATIVOS = [
+    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
+    "EURGBP", "EURJPY", "GBPJPY", "AUDJPY", "EURAUD",
+    "XAUUSD", "XAGUSD", "USOIL",
+    "BTCUSD", "ETHUSD",
+    "US30", "NAS100", "GER30"
+]
 
 TIME_FRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
 
-# --- BARRA LATERAL ---
+# --- BARRA LATERAL CONTROLES ---
 with st.sidebar:
     st.markdown("## 🤖 **NEURAL QUANT IA**")
-    if sync_status == "Sincronizado":
-        st.markdown('<div class="status-pill pill-active">🟢 MT5 EXNESS CONECTADO</div>', unsafe_allow_html=True)
+
+    # STATUS DO BOT E LIGA/DESLIGA
+    if st.session_state.bot_rodando:
+        st.markdown('<div class="status-pill pill-active">🟢 IA OPERANDO EM TEMPO REAL</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="status-pill pill-sync">🔄 SINC CONTA PENDENTE</div>', unsafe_allow_html=True)
+        st.markdown('<div class="status-pill pill-stopped">🔴 IA EM PAUSA (PARADA)</div>', unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # BOTÕES INICIAR / PARAR
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("▶️ INICIAR", use_container_width=True, type="primary"):
+            st.session_state.bot_rodando = True
+            if supabase:
+                try:
+                    supabase.table("bot_config").upsert({"id": 1, "is_running": True}).execute()
+                except Exception:
+                    pass
+            st.rerun()
+
+    with col_btn2:
+        if st.button("⏹️ PARAR", use_container_width=True):
+            st.session_state.bot_rodando = False
+            if supabase:
+                try:
+                    supabase.table("bot_config").upsert({"id": 1, "is_running": False}).execute()
+                except Exception:
+                    pass
+            st.rerun()
+
     st.markdown("---")
 
-    st.subheader("⚡ Combos Recomendados pela IA")
-    combo = st.selectbox(
-        "Selecione um Preset Inteligente",
-        [
-            "Customizado (Manual)",
-            "🔥 Combo 1: Scalper Sniper EURUSD (M5 + Soros 2)",
-            "💥 Combo 2: Gold Trend Hunter XAUUSD (M15 + Mão Fixa 1.5%)",
-            "⚡ Combo 3: Volatility BTCUSD (M15 + Martingale 1)",
-            "🛡️ Combo 4: Safe Growth USDJPY (H1 + Mão Fixa 2%)"
-        ]
+    # SELEÇÃO MULTI-ATIVOS
+    st.subheader("🌐 Varredura Multi-Ativos (IA)")
+    ativos_selecionados = st.multiselect(
+        "Ativos Monitorados em Simultâneo:",
+        options=TODOS_ATIVOS,
+        default=["EURUSD", "GBPUSD", "XAUUSD", "BTCUSD"]
     )
 
-    st.markdown("---")
-    st.subheader("🎯 Seleção de Ativo & Timeframe")
-
-    # Aplicação dos Presets
-    if "Combo 1" in combo:
-        ativo_default, tf_default, est_default = "EURUSD", "M5", "Soros (Alavancagem nos Lucros)"
-    elif "Combo 2" in combo:
-        ativo_default, tf_default, est_default = "XAUUSD (Ouro)", "M15", "Conservador (Mão Fixa)"
-    elif "Combo 3" in combo:
-        ativo_default, tf_default, est_default = "BTCUSD (Bitcoin)", "M15", "Martingale (Recuperação de Perdas)"
-    elif "Combo 4" in combo:
-        ativo_default, tf_default, est_default = "USDJPY", "H1", "Conservador (Mão Fixa)"
-    else:
-        ativo_default, tf_default, est_default = "EURUSD", "M5", "Soros (Alavancagem nos Lucros)"
-
-    categoria = st.selectbox("Categoria do Mercado", list(LISTA_ATIVOS.keys()))
-    ativo_selecionado = st.selectbox("Ativo Target", LISTA_ATIVOS[categoria])
-    symbol_code = ativo_selecionado.split(" ")[0]
-
-    timeframe = st.select_slider("Tempo Gráfico (Timeframe)", options=TIME_FRAMES, value=tf_default if tf_default in TIME_FRAMES else "M5")
+    timeframe = st.select_slider("Timeframe Base:", options=TIME_FRAMES, value="M5")
 
     st.markdown("---")
-    if st.button("🔄 Atualizar Dados em Tempo Real", use_container_width=True):
-        st.rerun()
+
+    # PRESETS DE COMBOS
+    st.subheader("⚡ Presets Inteligentes")
+    combo = st.selectbox(
+        "Combos Recomendados:",
+        [
+            "Customizado (Manual)",
+            "🔥 Combo 1: Scalper Sniper (EURUSD + M5 + Soros)",
+            "💥 Combo 2: Ouro & Cripto (XAUUSD/BTCUSD + M15)",
+            "🛡️ Combo 3: Swing Trade Conservador (H1 + Mão Fixa)"
+        ]
+    )
 
 # --- CABEÇALHO ---
 col_h1, col_h2 = st.columns([3, 1])
 with col_h1:
     st.title("🧠 NEURAL QUANT IA — Terminal Algorítmico 🔮")
-    st.caption("Execução Automática na Exness via MetaTrader 5 + Inteligência Generativa Gemini")
+    st.caption("Varredura Multi-Ativos + Gestão de Risco Inteligente + MT5 Exness")
 
 with col_h2:
     st.markdown("<br>", unsafe_allow_html=True)
@@ -199,11 +217,13 @@ with m3:
     """, unsafe_allow_html=True)
 
 with m4:
+    txt_status = "OPERANDO" if st.session_state.bot_rodando else "PARADO"
+    cor_status = "color-green" if st.session_state.bot_rodando else "color-red"
     st.markdown(f"""
     <div class="metric-box">
-        <div class="metric-label">⚡ Status da Operação</div>
-        <div class="metric-val color-green" style="font-size: 1.2rem;">{status_bot.upper()}</div>
-        <div class="metric-subtext color-cyan">{symbol_code} ({timeframe})</div>
+        <div class="metric-label">⚡ Status do Robô</div>
+        <div class="metric-val {cor_status}" style="font-size: 1.3rem;">{txt_status}</div>
+        <div class="metric-subtext color-cyan">{len(ativos_selecionados)} Ativos em Análise</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -211,129 +231,166 @@ st.markdown("<br>", unsafe_allow_html=True)
 
 # --- ABAS PRINCIPAIS ---
 tab_gestao, tab_grafico, tab_ordens, tab_ia = st.tabs([
-    "⚙️ Gestão de Risco & Estratégias", 
-    "📊 Gráfico ao Vivo & TradingView", 
-    "📋 Ordens Executadas no MT5", 
-    "🧠 Diagnóstico da IA"
+    "⚙️ Gestão de Risco & Metas", 
+    "📊 Gráficos ao Vivo", 
+    "📋 Ordens MT5", 
+    "🧠 Varredura IA Multi-Ativos"
 ])
 
-# --- TAB 1: GESTÃO ---
+# --- TAB 1: GESTÃO E METAS ---
 with tab_gestao:
-    st.subheader("🛡️ Gerenciamento de Risco & Alvo de Lucro")
-    c_g1, c_g2 = st.columns([1.2, 1])
+    st.subheader("🎯 Metas de Lucro & Limites de Parada (Calculados pela IA)")
+    
+    banca_base = saldo if saldo > 0 else 100.00
 
+    col_m1, col_m2 = st.columns(2)
+
+    with col_m1:
+        st.markdown("### 🏆 Meta de Lucro Diária (Take Profit)")
+        meta_pct_sugerida = 5.0
+        meta_usd_sugerida = banca_base * (meta_pct_sugerida / 100)
+
+        meta_diaria_usd = st.number_input(
+            "Meta de Lucro Diário ($)",
+            min_value=1.0,
+            value=float(round(meta_usd_sugerida, 2)),
+            step=1.0
+        )
+        meta_diaria_pct = (meta_diaria_usd / banca_base) * 100
+        st.info(f"💡 A meta equivale a **+{meta_diaria_pct:.2f}%** do seu saldo de **${banca_base:,.2f}**.")
+
+    with col_m2:
+        st.markdown("### 🛡️ Stop Loss Diário (Limite de Perda)")
+        stop_pct_sugerido = 3.0
+        stop_usd_sugerido = banca_base * (stop_pct_sugerido / 100)
+
+        stop_diario_usd = st.number_input(
+            "Stop Loss Diário ($)",
+            min_value=1.0,
+            value=float(round(stop_usd_sugerido, 2)),
+            step=1.0
+        )
+        stop_diario_pct = (stop_diario_usd / banca_base) * 100
+        st.error(f"⚠️ O robô pausará automaticamente se perder **-${stop_diario_usd:.2f}** (**-{stop_diario_pct:.2f}%**).")
+
+    st.markdown("---")
+
+    c_g1, c_g2 = st.columns([1.2, 1])
     with c_g1:
+        st.subheader("📐 Parâmetros de Entrada por Operação")
         estrategia_modo = st.radio(
             "Estratégia de Lote:",
-            ["Conservador (Mão Fixa)", "Soros (Alavancagem nos Lucros)", "Martingale (Recuperação de Perdas)"],
-            index=0 if est_default.startswith("Conservador") else (1 if est_default.startswith("Soros") else 2)
+            ["Conservador (Mão Fixa)", "Soros (Alavancagem nos Lucros)", "Martingale (Recuperação de Perdas)"]
         )
 
-        tipo_risco = st.radio("Modo de Risco:", ["Porcentagem da Banca (%)", "Valor Fixo ($)"], horizontal=True)
-
-        banca_base = saldo if saldo > 0 else 100.00
-        if tipo_risco == "Porcentagem da Banca (%)":
-            percentual_risco = st.slider("Arriscar por Operação (%)", 0.5, 10.0, 2.0, step=0.5)
-            valor_riscado = (banca_base * percentual_risco) / 100
-        else:
-            valor_riscado = st.number_input("Valor Fixo ($)", min_value=1.0, max_value=500.0, value=5.0, step=1.0)
-            percentual_risco = (valor_riscado / banca_base) * 100
-
+        percentual_risco = st.slider("Risco por Operação (% da Banca)", 0.5, 10.0, 2.0, step=0.5)
+        valor_riscado = (banca_base * percentual_risco) / 100
         rr_ratio = st.slider("Payoff (Risco x Retorno)", 1.0, 5.0, 2.0, step=0.5)
         alvo_retorno = valor_riscado * rr_ratio
 
     with c_g2:
         st.markdown(f"""
         <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 14px; padding: 20px;">
-            <h4 style="margin-top:0; color:#38bdf8;">🎯 Parâmetros da Próxima Ordem</h4>
-            <p><b>• Ativo:</b> <span class="color-yellow">{symbol_code}</span> | <b>Timeframe:</b> <span class="color-yellow">{timeframe}</span></p>
-            <p><b>• Estratégia:</b> <span class="color-cyan">{estrategia_modo}</span></p>
+            <h4 style="margin-top:0; color:#38bdf8;">📋 Resumo do Plano de Risco</h4>
+            <p><b>• Ativos Selecionados:</b> <span class="color-yellow">{', '.join(ativos_selecionados[:4])}{'...' if len(ativos_selecionados)>4 else ''}</span></p>
+            <p><b>• Timeframe:</b> <span class="color-yellow">{timeframe}</span> | <b>Estratégia:</b> <span class="color-cyan">{estrategia_modo}</span></p>
             <hr style="border-color: rgba(255,255,255,0.1);">
-            <p><b>• Perda Máxima (SL):</b> <span class="color-red">-${valor_riscado:.2f} ({percentual_risco:.1f}%)</span></p>
-            <p><b>• Alvo de Ganho (TP):</b> <span class="color-green">+${alvo_retorno:.2f} (+{percentual_risco*rr_ratio:.1f}%)</span></p>
-            <p><b>• Relação R/R:</b> <span class="color-purple">1 : {rr_ratio:.1f}</span></p>
+            <p><b>• Meta de Lucro Diária:</b> <span class="color-green">+${meta_diaria_usd:.2f} (+{meta_diaria_pct:.1f}%)</span></p>
+            <p><b>• Limite de Perda Diária:</b> <span class="color-red">-${stop_diario_usd:.2f} (-{stop_diario_pct:.1f}%)</span></p>
+            <p><b>• Risco por Ordem:</b> <span class="color-red">-${valor_riscado:.2f} ({percentual_risco:.1f}%)</span></p>
+            <p><b>• Alvo por Ordem:</b> <span class="color-green">+${alvo_retorno:.2f} (+{percentual_risco*rr_ratio:.1f}%)</span></p>
         </div>
         """, unsafe_allow_html=True)
 
         st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("💾 Salvar & Sincronizar com o Robô", use_container_width=True):
+        if st.button("💾 Salvar Parâmetros e Sincronizar", use_container_width=True):
             if supabase:
                 try:
                     supabase.table("bot_config").upsert({
                         "id": 1,
-                        "ativo": symbol_code,
+                        "ativos": ativos_selecionados,
                         "timeframe": timeframe,
                         "estrategia": estrategia_modo,
-                        "risco_usd": valor_riscado,
-                        "alvo_usd": alvo_retorno,
-                        "rr_ratio": rr_ratio
+                        "meta_usd": meta_diaria_usd,
+                        "stop_usd": stop_diario_usd,
+                        "risco_ordem_usd": valor_riscado,
+                        "is_running": st.session_state.bot_rodando
                     }).execute()
-                    st.success("✅ Configurações salvas e enviadas ao robô!")
+                    st.success("✅ Configurações e metas salvas com sucesso!")
                 except Exception:
-                    st.success("✅ Configurações salvas na sessão!")
+                    st.success("✅ Salvo na sessão local!")
             else:
-                st.success("✅ Parâmetros prontos!")
+                st.success("✅ Parâmetros aplicados!")
 
-# --- TAB 2: GRÁFICO TRADINGVIEW ---
+# --- TAB 2: GRÁFICOS MULTI-ATIVOS ---
 with tab_grafico:
-    st.subheader(f"📈 Gráfico em Tempo Real — {symbol_code} ({timeframe})")
-    
-    if "BTC" in symbol_code:
-        tv_symbol = "BINANCE:BTCUSDT"
-    elif "ETH" in symbol_code:
-        tv_symbol = "BINANCE:ETHUSDT"
-    elif "XAU" in symbol_code:
-        tv_symbol = "OANDA:XAUUSD"
-    elif "US30" in symbol_code or "NAS100" in symbol_code:
-        tv_symbol = f"CAPITALCOM:{symbol_code}"
+    if ativos_selecionados:
+        ativo_view = st.selectbox("Escolha o gráfico para visualizar:", ativos_selecionados)
+        
+        if "BTC" in ativo_view:
+            tv_symbol = "BINANCE:BTCUSDT"
+        elif "ETH" in ativo_view:
+            tv_symbol = "BINANCE:ETHUSDT"
+        elif "XAU" in ativo_view:
+            tv_symbol = "OANDA:XAUUSD"
+        elif "US30" in ativo_view or "NAS100" in ativo_view:
+            tv_symbol = f"CAPITALCOM:{ativo_view}"
+        else:
+            tv_symbol = f"FX:{ativo_view}"
+
+        tf_map = {"M1": "1", "M5": "5", "M15": "15", "M30": "30", "H1": "60", "H4": "240", "D1": "D"}
+        tv_tf = tf_map.get(timeframe, "5")
+
+        tradingview_html = f"""
+        <div class="tradingview-widget-container" style="height:520px;width:100%;">
+          <div id="tradingview_chart" style="height:100%;width:100%;"></div>
+          <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
+          <script type="text/javascript">
+          new TradingView.widget({{
+              "autosize": true,
+              "symbol": "{tv_symbol}",
+              "interval": "{tv_tf}",
+              "timezone": "America/Sao_Paulo",
+              "theme": "dark",
+              "style": "1",
+              "locale": "br",
+              "enable_publishing": false,
+              "hide_side_toolbar": false,
+              "allow_symbol_change": true,
+              "container_id": "tradingview_chart"
+          }});
+          </script>
+        </div>
+        """
+        components.html(tradingview_html, height=530)
     else:
-        tv_symbol = f"FX:{symbol_code}"
+        st.warning("Nenhum ativo selecionado na barra lateral.")
 
-    tf_map = {"M1": "1", "M5": "5", "M15": "15", "M30": "30", "H1": "60", "H4": "240", "D1": "D"}
-    tv_tf = tf_map.get(timeframe, "5")
-
-    tradingview_html = f"""
-    <div class="tradingview-widget-container" style="height:520px;width:100%;">
-      <div id="tradingview_chart" style="height:100%;width:100%;"></div>
-      <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
-      <script type="text/javascript">
-      new TradingView.widget({{
-          "autosize": true,
-          "symbol": "{tv_symbol}",
-          "interval": "{tv_tf}",
-          "timezone": "America/Sao_Paulo",
-          "theme": "dark",
-          "style": "1",
-          "locale": "br",
-          "enable_publishing": false,
-          "hide_side_toolbar": false,
-          "allow_symbol_change": true,
-          "container_id": "tradingview_chart"
-      }});
-      </script>
-    </div>
-    """
-    components.html(tradingview_html, height=530)
-
-# --- TAB 3: ORDENS ---
+# --- TAB 3: ORDENS MT5 ---
 with tab_ordens:
-    st.subheader("📋 Histórico de Ordens Registradas no MT5")
+    st.subheader("📋 Histórico de Ordens Executadas")
     if supabase:
         try:
             ordens_res = supabase.table("ordens").select("*").order("created_at", desc=True).limit(20).execute()
             if ordens_res.data:
                 st.dataframe(pd.DataFrame(ordens_res.data), use_container_width=True)
             else:
-                st.info("ℹ️ Nenhuma ordem aberta. O robô está analisando os gráficos...")
+                st.info("ℹ️ Nenhuma ordem aberta no momento.")
         except Exception:
-            st.info("ℹ️ Sincronização em andamento...")
+            st.info("ℹ️ Aguardando dados do servidor...")
 
-# --- TAB 4: DIAGNÓSTICO IA ---
+# --- TAB 4: VARREDURA IA MULTI-ATIVOS ---
 with tab_ia:
-    st.subheader("🧠 Log de Decisão Generativa Gemini")
+    st.subheader("🧠 Diagnóstico de Varredura Multi-Ativos da IA")
+    
+    status_txt = "ATIVO (EXECUTANDO)" if st.session_state.bot_rodando else "PARADO (EM PAUSA)"
+    
     st.code(f"""
-[SISTEMA] Ativo Target: {symbol_code} | Timeframe: {timeframe}
-[GERENCIAMENTO] Estratégia: {estrategia_modo} | Risco SL: ${valor_riscado:.2f} | Alvo TP: ${alvo_retorno:.2f}
+[SISTEMA_STATUS] {status_txt}
+[VARREDURA_MULTI_ATIVOS] Analisando simultaneamente: {', '.join(ativos_selecionados)}
+[TIMEFRAME] {timeframe}
+[GERENCIAMENTO_DE_METAS] Meta Diária: +${meta_diaria_usd:.2f} | Stop Loss Diário: -${stop_diario_usd:.2f}
 [STATUS_CONTA] Saldo Exness: ${saldo:.2f} | Equity: ${equity:.2f}
-[NÚCLEO_IA] Monitorando padrões de vela e gatilhos de entrada para a conta Exness (198802214).
+--------------------------------------------------------------------------------
+[NEURAL_ENGINE] Buscando gatilhos de entrada com confluência de indicadores em todos os ativos da lista...
     """, language="txt")
