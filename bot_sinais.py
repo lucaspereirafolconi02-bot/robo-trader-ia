@@ -76,15 +76,24 @@ else:
     supabase_url = raw_url
 
 supabase = None
-db_error_msg = ""
+sync_status = "Pendente"
+db_error_detail = ""
 
 if supabase_url and supabase_key:
     try:
         supabase = create_client(supabase_url, supabase_key)
+        # Testa consulta ao banco
+        res = supabase.table("ordens").select("id").limit(1).execute()
+        sync_status = "Conectado"
     except Exception as e:
-        db_error_msg = f"Erro ao criar cliente: {e}"
+        err_str = str(e)
+        if "relation" in err_str or "does not exist" in err_str:
+            sync_status = "Criar Tabelas"
+        else:
+            sync_status = "Erro de Conexão"
+            db_error_detail = err_str
 else:
-    db_error_msg = "Secrets do Supabase não encontrados."
+    sync_status = "Secrets Ausentes"
 
 # --- ESTADOS NA SESSÃO ---
 if "bot_rodando" not in st.session_state:
@@ -93,29 +102,22 @@ if "bot_rodando" not in st.session_state:
 saldo_usd_base = 421.52
 equity_usd_base = 421.52
 lucro_usd_base = 0.00
-sync_status = "Pendente"
 
 if "meta_base_usd" not in st.session_state:
     st.session_state.meta_base_usd = round(saldo_usd_base * 0.02, 2)
 if "stop_base_usd" not in st.session_state:
     st.session_state.stop_base_usd = round(saldo_usd_base * 0.01, 2)
 
-if supabase:
+if supabase and sync_status == "Conectado":
     try:
-        res = supabase.table("conta_status").select("*").order("created_at", desc=True).limit(1).execute()
-        if res.data and len(res.data) > 0:
-            d = res.data[0]
+        res_c = supabase.table("conta_status").select("*").order("created_at", desc=True).limit(1).execute()
+        if res_c.data and len(res_c.data) > 0:
+            d = res_c.data[0]
             saldo_usd_base = float(d.get("saldo", 421.52))
             equity_usd_base = float(d.get("equity", saldo_usd_base))
             lucro_usd_base = float(d.get("lucro_flutuante", 0.00))
-        sync_status = "Conectado"
-    except Exception as e:
-        # Tenta verificar se o banco responde
-        try:
-            supabase.table("bot_config").select("*").limit(1).execute()
-            sync_status = "Conectado"
-        except Exception:
-            sync_status = "Aguardando Tabela"
+    except Exception:
+        pass
 
 # --- ENGINE PROBABILÍSTICO DE IA (CÁLCULO AUTO TP / SL) ---
 def calcular_tp_sl_ia(ativo, tipo_ordem, preco_referencia=0.0):
@@ -127,14 +129,11 @@ def calcular_tp_sl_ia(ativo, tipo_ordem, preco_referencia=0.0):
     p_ref = preco_referencia if preco_referencia > 0 else precios_base.get(ativo, 100.0)
 
     if "BTC" in ativo or "ETH" in ativo:
-        pct_sl = 0.008  # 0.8% Stop Loss
-        pct_tp = 0.016  # 1.6% Take Profit (Relação Risk/Reward 1:2)
+        pct_sl, pct_tp = 0.008, 0.016
     elif "XAU" in ativo or "US" in ativo or "NAS" in ativo:
-        pct_sl = 0.004  # 0.4% Stop Loss
-        pct_tp = 0.008  # 0.8% Take Profit
+        pct_sl, pct_tp = 0.004, 0.008
     else:
-        pct_sl = 0.002  # 0.2% Stop Loss
-        pct_tp = 0.004  # 0.4% Take Profit
+        pct_sl, pct_tp = 0.002, 0.004
 
     decimais = 2 if ("BTC" in ativo or "ETH" in ativo or "XAU" in ativo or "US" in ativo or "JPY" in ativo) else 5
 
@@ -152,11 +151,11 @@ with st.sidebar:
     st.markdown("## 🧠 **NEURAL QUANT IA**")
 
     if sync_status == "Conectado":
-        st.markdown('<div class="status-pill pill-active">🟢 BANCO SUPABASE CONECTADO</div>', unsafe_allow_html=True)
-    elif sync_status == "Aguardando Tabela":
-        st.markdown('<div class="status-pill pill-active">🟡 SUPABASE ON (CRIAR TABELAS)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="status-pill pill-active">🟢 SUPABASE CONECTADO</div>', unsafe_allow_html=True)
+    elif sync_status == "Criar Tabelas":
+        st.markdown('<div class="status-pill pill-active" style="color: #f59e0b; border-color: #f59e0b;">🟡 EXECUTAR SQL NO SUPABASE</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="status-pill pill-stopped">🔴 SECRETS PENDENTES</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="status-pill pill-stopped">🔴 VERIFICAR SECRETS</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("💵 Configuração de Moeda")
@@ -171,7 +170,7 @@ with st.sidebar:
     with col_b1:
         if st.button("▶️ INICIAR", use_container_width=True, type="primary"):
             st.session_state.bot_rodando = True
-            if supabase:
+            if supabase and sync_status == "Conectado":
                 try: supabase.table("bot_config").upsert({"id": 1, "is_running": True}).execute()
                 except Exception: pass
             st.rerun()
@@ -179,7 +178,7 @@ with st.sidebar:
     with col_b2:
         if st.button("⏹️ PARAR", use_container_width=True):
             st.session_state.bot_rodando = False
-            if supabase:
+            if supabase and sync_status == "Conectado":
                 try: supabase.table("bot_config").upsert({"id": 1, "is_running": False}).execute()
                 except Exception: pass
             st.rerun()
@@ -278,9 +277,9 @@ with col_act1:
                 }).execute()
                 st.toast(f"🚀 COMPRA ({ativo_exec}) enviada! TP: {tp_calc} | SL: {sl_calc}", icon="✅")
             except Exception as e:
-                st.toast(f"⚠️ Crie a tabela 'ordens' no Supabase: {e}", icon="❌")
+                st.toast(f"⚠️ Erro ao salvar ordem no Supabase: {e}", icon="❌")
         else:
-            st.toast("⚠️ Supabase não conectado. Salve os Secrets.", icon="❌")
+            st.toast("⚠️ Supabase não conectado. Verifique os Secrets.", icon="❌")
 
 with col_act2:
     if st.button("🔴 VENDER (SHORT IA)", use_container_width=True):
@@ -297,9 +296,9 @@ with col_act2:
                 }).execute()
                 st.toast(f"📉 VENDA ({ativo_exec}) enviada! TP: {tp_calc} | SL: {sl_calc}", icon="🔻")
             except Exception as e:
-                st.toast(f"⚠️ Crie a tabela 'ordens' no Supabase: {e}", icon="❌")
+                st.toast(f"⚠️ Erro ao salvar ordem no Supabase: {e}", icon="❌")
         else:
-            st.toast("⚠️ Supabase não conectado. Salve os Secrets.", icon="❌")
+            st.toast("⚠️ Supabase não conectado. Verifique os Secrets.", icon="❌")
 
 with col_act3:
     if st.button("⛔ FECHAR TODAS", use_container_width=True):
@@ -412,12 +411,12 @@ with tab_ia:
 
 with tab_ordens:
     st.subheader("📋 Ordens no Banco Supabase")
-    if supabase:
+    if supabase and sync_status == "Conectado":
         try:
             ordens_res = supabase.table("ordens").select("*").order("created_at", desc=True).limit(20).execute()
             if ordens_res.data:
                 st.dataframe(pd.DataFrame(ordens_res.data), use_container_width=True)
             else:
-                st.info("ℹ️ Nenhuma ordem pendente ou registrada no banco.")
+                st.info("ℹ️ Nenhuma ordem registrada no banco.")
         except Exception as e:
-            st.warning(f"⚠️ A tabela 'ordens' ainda não foi criada no Supabase. Crie-a no SQL Editor com a estrutura necessária.")
+            st.warning(f"⚠️ Erro ao buscar ordens: {e}")
