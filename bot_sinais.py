@@ -106,7 +106,7 @@ LISTA_ATIVOS = {
     "Índices Globais": ["US30 (Dow Jones)", "NAS100 (Nasdaq)", "GER30 (DAX)"]
 }
 
-TIME FRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
+TIME_FRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
 
 # --- BARRA LATERAL ---
 with st.sidebar:
@@ -148,7 +148,7 @@ with st.sidebar:
     ativo_selecionado = st.selectbox("Ativo Target", LISTA_ATIVOS[categoria])
     symbol_code = ativo_selecionado.split(" ")[0]
 
-    timeframe = st.select_slider("Tempo Gráfico (Timeframe)", options=TIME FRAMES, value=tf_default if tf_default in TIME FRAMES else "M5")
+    timeframe = st.select_slider("Tempo Gráfico (Timeframe)", options=TIME_FRAMES, value=tf_default if tf_default in TIME_FRAMES else "M5")
 
     st.markdown("---")
     if st.button("🔄 Atualizar Dados em Tempo Real", use_container_width=True):
@@ -194,7 +194,7 @@ with m3:
     <div class="metric-box">
         <div class="metric-label">📊 Lucro Flutuante</div>
         <div class="metric-val {color_pnl}">{sinal_pnl}${lucro:,.2f}</div>
-        <div class="metric-subtext {color_pnl}">Ordens em Abertas</div>
+        <div class="metric-subtext {color_pnl}">Ordens Abertas</div>
     </div>
     """, unsafe_allow_html=True)
 
@@ -278,7 +278,6 @@ with tab_gestao:
 with tab_grafico:
     st.subheader(f"📈 Gráfico em Tempo Real — {symbol_code} ({timeframe})")
     
-    # Mapeamento do ativo para o TradingView
     if "BTC" in symbol_code:
         tv_symbol = "BINANCE:BTCUSDT"
     elif "ETH" in symbol_code:
