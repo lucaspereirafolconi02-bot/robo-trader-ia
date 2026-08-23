@@ -54,10 +54,10 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- CONEXÃO SUPABASE ---
+# --- OBTENÇÃO DE CHAVES DA NUVEM OU LOCAL ---
 def get_secret(key):
     try:
-        if key in st.secrets:
+        if hasattr(st, "secrets") and key in st.secrets:
             return st.secrets[key]
     except Exception:
         pass
@@ -66,16 +66,13 @@ def get_secret(key):
 supabase_url = get_secret("SUPABASE_URL")
 supabase_key = get_secret("SUPABASE_KEY")
 
-@st.cache_resource
-def init_supabase():
-    if supabase_url and supabase_key:
-        try:
-            return create_client(supabase_url, supabase_key)
-        except Exception:
-            return None
-    return None
-
-supabase = init_supabase()
+# Conexão direta sem cache estático para evitar travamento de estado
+supabase = None
+if supabase_url and supabase_key:
+    try:
+        supabase = create_client(supabase_url, supabase_key)
+    except Exception as e:
+        st.sidebar.error(f"❌ Erro de conexão Supabase: {e}")
 
 # --- ESTADOS PADRÃO DA SESSÃO ---
 if "bot_rodando" not in st.session_state:
@@ -87,19 +84,25 @@ equity = 0.00
 lucro = 0.00
 status_bot = "PARADO"
 sync_status = "Aguardando MT5"
+db_status_msg = "Aguardando diagnóstico..."
 
 if supabase:
     try:
         res = supabase.table("conta_status").select("*").order("created_at", desc=True).limit(1).execute()
-        if res.data:
+        if res.data and len(res.data) > 0:
             d = res.data[0]
             saldo = float(d.get("saldo", 0.00))
             equity = float(d.get("equity", saldo))
             lucro = float(d.get("lucro_flutuante", 0.00))
             status_bot = d.get("status", "EXECUTANDO" if st.session_state.bot_rodando else "PARADO")
             sync_status = "Sincronizado"
-    except Exception:
-        pass
+            db_status_msg = "🟢 Dados lidos do Supabase com sucesso!"
+        else:
+            db_status_msg = "⚠️ Supabase conectado, mas a tabela 'conta_status' está vazia ou sem permissão RLS."
+    except Exception as e:
+        db_status_msg = f"❌ Erro ao consultar tabela: {e}"
+else:
+    db_status_msg = "⚠️ Supabase URL/KEY não encontrados nos Secrets."
 
 # --- LISTA COMPLETA DE ATIVOS PARA VARREDURA ---
 TODOS_ATIVOS = [
@@ -116,12 +119,13 @@ TIME_FRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
 with st.sidebar:
     st.markdown("## 🤖 **NEURAL QUANT IA**")
 
-    # STATUS DO BOT E LIGA/DESLIGA
-    if st.session_state.bot_rodando:
-        st.markdown('<div class="status-pill pill-active">🟢 IA OPERANDO EM TEMPO REAL</div>', unsafe_allow_html=True)
+    # STATUS DE DIAGNÓSTICO
+    if sync_status == "Sincronizado":
+        st.markdown('<div class="status-pill pill-active">🟢 MT5 EXNESS CONECTADO</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="status-pill pill-stopped">🔴 IA EM PAUSA (PARADA)</div>', unsafe_allow_html=True)
+        st.markdown('<div class="status-pill pill-stopped">🔴 SINC CONTA PENDENTE</div>', unsafe_allow_html=True)
 
+    st.caption(db_status_msg)
     st.markdown("<br>", unsafe_allow_html=True)
 
     # BOTÕES INICIAR / PARAR
@@ -159,18 +163,8 @@ with st.sidebar:
     timeframe = st.select_slider("Timeframe Base:", options=TIME_FRAMES, value="M5")
 
     st.markdown("---")
-
-    # PRESETS DE COMBOS
-    st.subheader("⚡ Presets Inteligentes")
-    combo = st.selectbox(
-        "Combos Recomendados:",
-        [
-            "Customizado (Manual)",
-            "🔥 Combo 1: Scalper Sniper (EURUSD + M5 + Soros)",
-            "💥 Combo 2: Ouro & Cripto (XAUUSD/BTCUSD + M15)",
-            "🛡️ Combo 3: Swing Trade Conservador (H1 + Mão Fixa)"
-        ]
-    )
+    if st.button("🔄 Forçar Recarga de Saldo", use_container_width=True):
+        st.rerun()
 
 # --- CABEÇALHO ---
 col_h1, col_h2 = st.columns([3, 1])
