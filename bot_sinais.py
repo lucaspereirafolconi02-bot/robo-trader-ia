@@ -4,13 +4,12 @@ from supabase import create_client
 import streamlit.components.v1 as components
 from dotenv import load_dotenv
 import pandas as pd
-import datetime
 
 load_dotenv()
 
 # --- CONFIGURAÇÃO DA PÁGINA ---
 st.set_page_config(
-    page_title="NEURAL QUANT IA ⚡ | Terminal Multiativos",
+    page_title="NEURAL QUANT IA ⚡ | Terminal Algorítmico",
     page_icon="🧠",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -55,7 +54,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- TRATAMENTO E TRIMA DE CHAVES DA NUVEM ---
+# --- HIGIENIZAÇÃO DE CHAVES DO SUPABASE ---
 def get_clean_secret(key):
     val = ""
     try:
@@ -70,19 +69,20 @@ def get_clean_secret(key):
 supabase_url = get_clean_secret("SUPABASE_URL")
 supabase_key = get_clean_secret("SUPABASE_KEY")
 
-# --- CONEXÃO SEGURA AO SUPABASE ---
+# Garantir formato correto da URL
+if supabase_url and not supabase_url.startswith("http"):
+    supabase_url = f"https://{supabase_url}"
+
 supabase = None
 db_error_msg = ""
 
 if supabase_url and supabase_key:
-    if not supabase_url.startswith("http"):
-        supabase_url = f"https://{supabase_url}"
     try:
         supabase = create_client(supabase_url, supabase_key)
     except Exception as e:
-        db_error_msg = f"Falha na conexão DNS/URL: {e}"
+        db_error_msg = f"Erro na inicialização: {e}"
 else:
-    db_error_msg = "Chaves do Supabase não encontradas nos Secrets."
+    db_error_msg = "Chaves ausentes nos Secrets."
 
 # --- ESTADOS PADRÃO ---
 if "bot_rodando" not in st.session_state:
@@ -103,22 +103,15 @@ if supabase:
             lucro = float(d.get("lucro_flutuante", 0.00))
             sync_status = "Conectado"
         else:
-            db_error_msg = "Tabela 'conta_status' vazia. Aguardando worker local..."
+            sync_status = "Conectado"
     except Exception as e:
-        db_error_msg = f"Erro na consulta: {e}"
-
-# --- LISTA DE ATIVOS ---
-TODOS_ATIVOS = [
-    "EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "NZDUSD",
-    "EURGBP", "EURJPY", "GBPJPY", "XAUUSD", "USOIL", "BTCUSD", "ETHUSD", "US30", "NAS100"
-]
-TIME_FRAMES = ["M1", "M5", "M15", "M30", "H1", "H4", "D1"]
+        db_error_msg = f"Aguardando tabela no banco ({e})"
 
 # --- BARRA LATERAL ---
 with st.sidebar:
     st.markdown("## 🤖 **NEURAL QUANT IA**")
 
-    if sync_status == "Conectado":
+    if sync_status == "Conectado" and not db_error_msg:
         st.markdown('<div class="status-pill pill-active">🟢 MT5 EXNESS CONECTADO</div>', unsafe_allow_html=True)
     else:
         st.markdown('<div class="status-pill pill-stopped">🔴 SINC CONTA PENDENTE</div>', unsafe_allow_html=True)
@@ -128,7 +121,6 @@ with st.sidebar:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # LIGA / DESLIGA PAINEL
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         if st.button("▶️ INICIAR", use_container_width=True, type="primary"):
@@ -155,11 +147,11 @@ with st.sidebar:
     st.subheader("🌐 Varredura Multi-Ativos (IA)")
     ativos_selecionados = st.multiselect(
         "Ativos Monitorados em Simultâneo:",
-        options=TODOS_ATIVOS,
+        options=["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF", "XAUUSD", "BTCUSD", "ETHUSD", "US30", "NAS100"],
         default=["EURUSD", "GBPUSD", "XAUUSD", "BTCUSD"]
     )
 
-    timeframe = st.select_slider("Timeframe Base:", options=TIME_FRAMES, value="M5")
+    timeframe = st.select_slider("Timeframe Base:", options=["M1", "M5", "M15", "M30", "H1", "H4", "D1"], value="M5")
 
     st.markdown("---")
     if st.button("🔄 Atualizar Painel", use_container_width=True):
@@ -177,7 +169,7 @@ with col_h2:
 
 st.markdown("<br>", unsafe_allow_html=True)
 
-# --- CARTÕES DE MÉTRICAS AO VIVO ---
+# --- CARTÕES DE MÉTRICAS ---
 m1, m2, m3, m4 = st.columns(4)
 
 with m1:
@@ -230,178 +222,73 @@ tab_gestao, tab_grafico, tab_ordens, tab_ia = st.tabs([
     "🧠 Varredura IA Multi-Ativos"
 ])
 
-# --- TAB 1: GESTÃO E METAS ---
 with tab_gestao:
     st.subheader("🎯 Metas de Lucro & Limites de Parada")
-    
     banca_base = saldo if saldo > 0 else 100.00
 
     col_m1, col_m2 = st.columns(2)
-
     with col_m1:
-        st.markdown("### 🏆 Meta de Lucro Diária (Take Profit)")
-        meta_diaria_usd = st.number_input(
-            "Meta de Lucro Diário ($)",
-            min_value=1.0,
-            value=float(round(banca_base * 0.05, 2)),
-            step=1.0
-        )
-        meta_diaria_pct = (meta_diaria_usd / banca_base) * 100
-        st.info(f"💡 Meta de **+{meta_diaria_pct:.2f}%** do saldo total.")
+        meta_diaria_usd = st.number_input("Meta de Lucro Diário ($)", min_value=1.0, value=float(round(banca_base * 0.05, 2)), step=1.0)
+        st.info(f"💡 Meta de **+{(meta_diaria_usd/banca_base)*100:.2f}%** do saldo.")
 
     with col_m2:
-        st.markdown("### 🛡️ Stop Loss Diário (Limite de Perda)")
-        stop_diario_usd = st.number_input(
-            "Stop Loss Diário ($)",
-            min_value=1.0,
-            value=float(round(banca_base * 0.03, 2)),
-            step=1.0
-        )
-        stop_diario_pct = (stop_diario_usd / banca_base) * 100
-        st.error(f"⚠️ O robô pausará ao perder **-${stop_diario_usd:.2f}** (**-{stop_diario_pct:.2f}%**).")
+        stop_diario_usd = st.number_input("Stop Loss Diário ($)", min_value=1.0, value=float(round(banca_base * 0.03, 2)), step=1.0)
+        st.error(f"⚠️ Parada automática em **-${stop_diario_usd:.2f}**.")
 
     st.markdown("---")
+    if st.button("💾 Salvar Parâmetros e Sincronizar", use_container_width=True):
+        if supabase:
+            try:
+                supabase.table("bot_config").upsert({
+                    "id": 1,
+                    "ativos": ativos_selecionados,
+                    "timeframe": timeframe,
+                    "meta_usd": meta_diaria_usd,
+                    "stop_usd": stop_diario_usd,
+                    "is_running": st.session_state.bot_rodando
+                }).execute()
+                st.success("✅ Configurações salvas e enviadas!")
+            except Exception as e:
+                st.error(f"Erro ao salvar: {e}")
 
-    c_g1, c_g2 = st.columns([1.2, 1])
-    with c_g1:
-        st.subheader("📐 Parâmetros de Entrada por Operação")
-        estrategia_modo = st.radio(
-            "Estratégia de Lote:",
-            ["Conservador (Mão Fixa)", "Soros (Alavancagem nos Lucros)", "Martingale (Recuperação de Perdas)"]
-        )
-
-        percentual_risco = st.slider("Risco por Operação (% da Banca)", 0.5, 10.0, 2.0, step=0.5)
-        valor_riscado = (banca_base * percentual_risco) / 100
-        rr_ratio = st.slider("Payoff (Risco x Retorno)", 1.0, 5.0, 2.0, step=0.5)
-        alvo_retorno = valor_riscado * rr_ratio
-
-    with c_g2:
-        st.markdown(f"""
-        <div style="background: rgba(15, 23, 42, 0.9); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 14px; padding: 20px;">
-            <h4 style="margin-top:0; color:#38bdf8;">📋 Resumo do Plano de Risco</h4>
-            <p><b>• Ativos:</b> <span class="color-yellow">{', '.join(ativos_selecionados[:4])}</span></p>
-            <p><b>• Timeframe:</b> <span class="color-yellow">{timeframe}</span> | <b>Estratégia:</b> <span class="color-cyan">{estrategia_modo}</span></p>
-            <hr style="border-color: rgba(255,255,255,0.1);">
-            <p><b>• Meta Diária:</b> <span class="color-green">+${meta_diaria_usd:.2f} (+{meta_diaria_pct:.1f}%)</span></p>
-            <p><b>• Stop Diário:</b> <span class="color-red">-${stop_diario_usd:.2f} (-{stop_diario_pct:.1f}%)</span></p>
-            <p><b>• Perda Máx. por Ordem:</b> <span class="color-red">-${valor_riscado:.2f}</span></p>
-            <p><b>• Alvo por Ordem:</b> <span class="color-green">+${alvo_retorno:.2f}</span></p>
-        </div>
-        """, unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("💾 Salvar Parâmetros e Sincronizar", use_container_width=True):
-            if supabase:
-                try:
-                    supabase.table("bot_config").upsert({
-                        "id": 1,
-                        "ativos": ativos_selecionados,
-                        "timeframe": timeframe,
-                        "estrategia": estrategia_modo,
-                        "meta_usd": meta_diaria_usd,
-                        "stop_usd": stop_diario_usd,
-                        "risco_ordem_usd": valor_riscado,
-                        "is_running": st.session_state.bot_rodando
-                    }).execute()
-                    st.success("✅ Configurações salvas e sincronizadas!")
-                except Exception as e:
-                    st.error(f"Erro ao salvar: {e}")
-            else:
-                st.info("Configurações aplicadas na sessão local.")
-
-# --- TAB 2: GRÁFICOS MULTI-ATIVOS ---
 with tab_grafico:
     if ativos_selecionados:
         ativo_view = st.selectbox("Escolha o ativo para análise gráfica:", ativos_selecionados)
+        tv_symbol = f"BINANCE:{ativo_view}USDT" if "BTC" in ativo_view or "ETH" in ativo_view else (f"OANDA:{ativo_view}" if "XAU" in ativo_view else f"FX:{ativo_view}")
         
-        if "BTC" in ativo_view:
-            tv_symbol = "BINANCE:BTCUSDT"
-        elif "ETH" in ativo_view:
-            tv_symbol = "BINANCE:ETHUSDT"
-        elif "XAU" in ativo_view:
-            tv_symbol = "OANDA:XAUUSD"
-        elif "US30" in ativo_view or "NAS100" in ativo_view:
-            tv_symbol = f"CAPITALCOM:{ativo_view}"
-        else:
-            tv_symbol = f"FX:{ativo_view}"
-
-        tf_map = {"M1": "1", "M5": "5", "M15": "15", "M30": "30", "H1": "60", "H4": "240", "D1": "D"}
-        tv_tf = tf_map.get(timeframe, "5")
-
         tradingview_html = f"""
-        <div class="tradingview-widget-container" style="height:520px;width:100%;">
+        <div class="tradingview-widget-container" style="height:500px;width:100%;">
           <div id="tradingview_chart" style="height:100%;width:100%;"></div>
           <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
           <script type="text/javascript">
           new TradingView.widget({{
               "autosize": true,
               "symbol": "{tv_symbol}",
-              "interval": "{tv_tf}",
+              "interval": "5",
               "timezone": "America/Sao_Paulo",
               "theme": "dark",
               "style": "1",
               "locale": "br",
-              "enable_publishing": false,
-              "hide_side_toolbar": false,
-              "allow_symbol_change": true,
               "container_id": "tradingview_chart"
           }});
           </script>
         </div>
         """
-        components.html(tradingview_html, height=530)
+        components.html(tradingview_html, height=510)
 
-# --- TAB 3: ORDENS MT5 E TESTE ---
 with tab_ordens:
-    st.subheader("📋 Histórico de Ordens Executadas no MT5")
-    
-    col_o1, col_o2 = st.columns([3, 1])
-    with col_o2:
-        if st.button("🚀 Testar Envio de Ordem Demo", use_container_width=True):
-            if supabase:
-                try:
-                    supabase.table("ordens").insert({
-                        "ativo": ativos_selecionados[0] if ativos_selecionados else "EURUSD",
-                        "tipo": "BUY",
-                        "lote": 0.01,
-                        "preco": 0.0,
-                        "status": "PENDENTE"
-                    }).execute()
-                    st.success(" Ordem de teste enviada para o MT5!")
-                except Exception as e:
-                    st.error(f"Erro ao enviar: {e}")
-
+    st.subheader("📋 Histórico de Ordens Executadas")
     if supabase:
         try:
             ordens_res = supabase.table("ordens").select("*").order("created_at", desc=True).limit(20).execute()
             if ordens_res.data:
                 st.dataframe(pd.DataFrame(ordens_res.data), use_container_width=True)
             else:
-                st.info("ℹ️ Nenhuma ordem registrada no momento.")
+                st.info("ℹ️ Nenhuma ordem registrada.")
         except Exception:
-            st.info("ℹ️ Sincronizando tabela de ordens...")
+            st.info("ℹ️ Aguardando registros da tabela 'ordens'.")
 
-# --- TAB 4: MATRIZ DE VARREDURA IA ---
 with tab_ia:
     st.subheader("🧠 Matriz de Análise IA em Tempo Real")
-
-    # Tabela visual de monitoramento
-    dados_varredura = []
-    for asset in ativos_selecionados:
-        dados_varredura.append({
-            "Ativo": asset,
-            "Timeframe": timeframe,
-            "Tendência IA": "ALTA 🟢" if hash(asset) % 2 == 0 else "BAIXA 🔴",
-            "Score IA": f"{85 + (hash(asset) % 12)}%",
-            "Status Varredura": "Buscando Gatilho" if st.session_state.bot_rodando else "Em Pausa"
-        })
-
+    dados_varredura = [{"Ativo": asset, "Timeframe": timeframe, "Sinal IA": "NEUTRO / MONITORANDO"} for asset in ativos_selecionados]
     st.table(pd.DataFrame(dados_varredura))
-
-    st.code(f"""
-[LOG DE OPERAÇÕES DO SISTEMA]
-• Servidor de IA: Gemini Multimodal Quant Engine
-• Ativos em Monitoramento Simultâneo: {len(ativos_selecionados)} pares
-• Status de Ativação: {"EXECUTANDO (BUSCANDO ENTRADAS)" if st.session_state.bot_rodando else "DESATIVADO (PAUSADO MANUAMENTE)"}
-• Conexão Supabase/MT5: {"OK" if sync_status == "Conectado" else "AGUARDANDO WORKER"}
-    """, language="txt")
