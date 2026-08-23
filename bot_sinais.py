@@ -59,12 +59,13 @@ def get_clean_secret(key):
     try:
         if hasattr(st, "secrets") and key in st.secrets:
             val = str(st.secrets[key])
+        elif hasattr(st, "secrets") and key.lower() in st.secrets:
+            val = str(st.secrets[key.lower()])
     except Exception:
         pass
     if not val:
-        val = os.getenv(key, "")
-    val = val.strip().strip('"').strip("'").strip('/')
-    return val
+        val = os.getenv(key, os.getenv(key.lower(), ""))
+    return val.strip().strip('"').strip("'").strip('/')
 
 raw_url = get_clean_secret("SUPABASE_URL")
 supabase_key = get_clean_secret("SUPABASE_KEY")
@@ -81,9 +82,9 @@ if supabase_url and supabase_key:
     try:
         supabase = create_client(supabase_url, supabase_key)
     except Exception as e:
-        db_error_msg = f"Erro de conexão URL: {e}"
+        db_error_msg = f"Erro ao criar cliente: {e}"
 else:
-    db_error_msg = "Secrets não configurados corretamente."
+    db_error_msg = "Secrets do Supabase não encontrados."
 
 # --- ESTADOS NA SESSÃO ---
 if "bot_rodando" not in st.session_state:
@@ -92,7 +93,7 @@ if "bot_rodando" not in st.session_state:
 saldo_usd_base = 421.52
 equity_usd_base = 421.52
 lucro_usd_base = 0.00
-sync_status = "Modo Local"
+sync_status = "Pendente"
 
 if "meta_base_usd" not in st.session_state:
     st.session_state.meta_base_usd = round(saldo_usd_base * 0.02, 2)
@@ -107,15 +108,17 @@ if supabase:
             saldo_usd_base = float(d.get("saldo", 421.52))
             equity_usd_base = float(d.get("equity", saldo_usd_base))
             lucro_usd_base = float(d.get("lucro_flutuante", 0.00))
+        sync_status = "Conectado"
+    except Exception as e:
+        # Tenta verificar se o banco responde
+        try:
+            supabase.table("bot_config").select("*").limit(1).execute()
             sync_status = "Conectado"
-        else:
-            sync_status = "Conectado"
-    except Exception:
-        sync_status = "Aguardando Tabela"
+        except Exception:
+            sync_status = "Aguardando Tabela"
 
 # --- ENGINE PROBABILÍSTICO DE IA (CÁLCULO AUTO TP / SL) ---
 def calcular_tp_sl_ia(ativo, tipo_ordem, preco_referencia=0.0):
-    # Preços de referência caso não receba do tick em tempo real
     precios_base = {
         "BTCUSD": 65000.0, "ETHUSD": 3400.0, "XAUUSD": 2400.0,
         "EURUSD": 1.0880, "GBPUSD": 1.2850, "USDJPY": 155.00,
@@ -123,10 +126,9 @@ def calcular_tp_sl_ia(ativo, tipo_ordem, preco_referencia=0.0):
     }
     p_ref = preco_referencia if preco_referencia > 0 else precios_base.get(ativo, 100.0)
 
-    # Volatilidade probabilística calibrada por classe de ativo
     if "BTC" in ativo or "ETH" in ativo:
         pct_sl = 0.008  # 0.8% Stop Loss
-        pct_tp = 0.016  # 1.6% Take Profit (Risco/Retorno 1:2)
+        pct_tp = 0.016  # 1.6% Take Profit (Relação Risk/Reward 1:2)
     elif "XAU" in ativo or "US" in ativo or "NAS" in ativo:
         pct_sl = 0.004  # 0.4% Stop Loss
         pct_tp = 0.008  # 0.8% Take Profit
@@ -134,12 +136,14 @@ def calcular_tp_sl_ia(ativo, tipo_ordem, preco_referencia=0.0):
         pct_sl = 0.002  # 0.2% Stop Loss
         pct_tp = 0.004  # 0.4% Take Profit
 
+    decimais = 2 if ("BTC" in ativo or "ETH" in ativo or "XAU" in ativo or "US" in ativo or "JPY" in ativo) else 5
+
     if tipo_ordem == "BUY":
-        sl = round(p_ref * (1 - pct_sl), 5 if "USD" in ativo and "BTC" not in ativo else 2)
-        tp = round(p_ref * (1 + pct_tp), 5 if "USD" in ativo and "BTC" not in ativo else 2)
+        sl = round(p_ref * (1 - pct_sl), decimais)
+        tp = round(p_ref * (1 + pct_tp), decimais)
     else:
-        sl = round(p_ref * (1 + pct_sl), 5 if "USD" in ativo and "BTC" not in ativo else 2)
-        tp = round(p_ref * (1 - pct_tp), 5 if "USD" in ativo and "BTC" not in ativo else 2)
+        sl = round(p_ref * (1 + pct_sl), decimais)
+        tp = round(p_ref * (1 - pct_tp), decimais)
 
     return sl, tp
 
@@ -149,8 +153,10 @@ with st.sidebar:
 
     if sync_status == "Conectado":
         st.markdown('<div class="status-pill pill-active">🟢 BANCO SUPABASE CONECTADO</div>', unsafe_allow_html=True)
+    elif sync_status == "Aguardando Tabela":
+        st.markdown('<div class="status-pill pill-active">🟡 SUPABASE ON (CRIAR TABELAS)</div>', unsafe_allow_html=True)
     else:
-        st.markdown('<div class="status-pill pill-stopped">🔴 VERIFICAR SECRETS</div>', unsafe_allow_html=True)
+        st.markdown('<div class="status-pill pill-stopped">🔴 SECRETS PENDENTES</div>', unsafe_allow_html=True)
 
     st.markdown("---")
     st.subheader("💵 Configuração de Moeda")
@@ -272,9 +278,9 @@ with col_act1:
                 }).execute()
                 st.toast(f"🚀 COMPRA ({ativo_exec}) enviada! TP: {tp_calc} | SL: {sl_calc}", icon="✅")
             except Exception as e:
-                st.toast(f"❌ Falha no envio: {e}", icon="⚠️")
+                st.toast(f"⚠️ Crie a tabela 'ordens' no Supabase: {e}", icon="❌")
         else:
-            st.toast("⚠️ Supabase desconectado. Verifique a URL nos Secrets.", icon="❌")
+            st.toast("⚠️ Supabase não conectado. Salve os Secrets.", icon="❌")
 
 with col_act2:
     if st.button("🔴 VENDER (SHORT IA)", use_container_width=True):
@@ -291,9 +297,9 @@ with col_act2:
                 }).execute()
                 st.toast(f"📉 VENDA ({ativo_exec}) enviada! TP: {tp_calc} | SL: {sl_calc}", icon="🔻")
             except Exception as e:
-                st.toast(f"❌ Falha no envio: {e}", icon="⚠️")
+                st.toast(f"⚠️ Crie a tabela 'ordens' no Supabase: {e}", icon="❌")
         else:
-            st.toast("⚠️ Supabase desconectado. Verifique a URL nos Secrets.", icon="❌")
+            st.toast("⚠️ Supabase não conectado. Salve os Secrets.", icon="❌")
 
 with col_act3:
     if st.button("⛔ FECHAR TODAS", use_container_width=True):
@@ -305,13 +311,13 @@ with col_act3:
                     "lote": 0.0,
                     "status": "PENDENTE"
                 }).execute()
-                st.toast("🛑 Ordem de Zeragem enviada ao MT5!", icon="🛑")
+                st.toast("🛑 Ordem de Zeragem enviada!", icon="🛑")
             except Exception as e:
-                st.toast(f"❌ Falha na zeragem: {e}", icon="⚠️")
+                st.toast(f"❌ Falha: {e}", icon="⚠️")
 
 with col_act4:
     sl_demo, tp_demo = calcular_tp_sl_ia(ativo_exec, "BUY")
-    st.caption(f"🎯 Ativo: **{ativo_exec}** | Lote: **{lote_sugerido}**\n\n🧠 IA Auto-Target: **TP: {tp_demo} | SL: {sl_demo}**")
+    st.caption(f"🎯 Ativo Foco: **{ativo_exec}** | Lote Calc: **{lote_sugerido}**\n\n🧠 IA Target Auto: **TP: {tp_demo} | SL: {sl_demo}**")
 
 st.markdown("<br>", unsafe_allow_html=True)
 
@@ -412,6 +418,6 @@ with tab_ordens:
             if ordens_res.data:
                 st.dataframe(pd.DataFrame(ordens_res.data), use_container_width=True)
             else:
-                st.info("ℹ️ Nenhuma ordem pendente.")
-        except Exception:
-            st.info("ℹ️ Aguardando inicialização da tabela ordens.")
+                st.info("ℹ️ Nenhuma ordem pendente ou registrada no banco.")
+        except Exception as e:
+            st.warning(f"⚠️ A tabela 'ordens' ainda não foi criada no Supabase. Crie-a no SQL Editor com a estrutura necessária.")
