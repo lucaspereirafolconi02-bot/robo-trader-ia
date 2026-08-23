@@ -85,23 +85,24 @@ else:
 # --- ESTADOS NA SESSÃO ---
 if "bot_rodando" not in st.session_state:
     st.session_state.bot_rodando = False
-if "meta_base_usd" not in st.session_state:
-    st.session_state.meta_base_usd = 10.0
-if "stop_base_usd" not in st.session_state:
-    st.session_state.stop_base_usd = 5.0
 
-# Dados de Saldo do Banco (Base sempre em USD na Exness)
-saldo_usd_base = 100.00
-equity_usd_base = 100.00
+# SALDO BASE AJUSTADO COM SUA CONTA EXNESS (#198802214)
+saldo_usd_base = 421.52
+equity_usd_base = 421.52
 lucro_usd_base = 0.00
 sync_status = "Modo Local"
+
+if "meta_base_usd" not in st.session_state:
+    st.session_state.meta_base_usd = round(saldo_usd_base * 0.02, 2)
+if "stop_base_usd" not in st.session_state:
+    st.session_state.stop_base_usd = round(saldo_usd_base * 0.01, 2)
 
 if supabase and not db_error_msg:
     try:
         res = supabase.table("conta_status").select("*").order("created_at", desc=True).limit(1).execute()
         if res.data and len(res.data) > 0:
             d = res.data[0]
-            saldo_usd_base = float(d.get("saldo", 100.00))
+            saldo_usd_base = float(d.get("saldo", 421.52))
             equity_usd_base = float(d.get("equity", saldo_usd_base))
             lucro_usd_base = float(d.get("lucro_flutuante", 0.00))
             sync_status = "Conectado"
@@ -123,7 +124,7 @@ with st.sidebar:
     
     # SELETOR DE MOEDA & COTAÇÃO DÓLAR
     st.subheader("💵 Configuração de Moeda")
-    moeda_sel = st.radio("Moeda do Painel:", ["USD ($)", "BRL (R$)"], horizontal=True)
+    moeda_sel = st.radio("Moeda do Painel:", ["USD ($)", "BRL (R$)"], index=1, horizontal=True)
     cotacao_usd = st.number_input("Cotação USD/BRL:", min_value=1.00, value=5.50, step=0.05)
 
     # Fator de conversão
